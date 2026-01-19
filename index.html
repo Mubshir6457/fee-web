@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fee Management System</title>
+<style>
+body{font-family:Arial;margin:0;padding:10px;background:#f5f5f5}
+.box{border:2px solid #2c3e50;padding:15px;margin:10px 0;background:white;border-radius:8px}
+input,select{padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:6px;width:100%;box-sizing:border-box}
+button{padding:12px;border:none;border-radius:6px;cursor:pointer;width:100%;margin:5px 0}
+.btn-blue{background:#3498db;color:white}
+.btn-green{background:#27ae60;color:white}
+.btn-red{background:#e74c3c;color:white}
+.hidden{display:none}
+.student-list{margin-top:10px}
+.fee-row{display:flex;align-items:center;padding:12px;border-bottom:1px solid #eee}
+.fee-row.paid{background:#d4edda}
+.fee-row.pending{background:#f8d7da}
+.tick{color:#27ae60;margin-right:10px}
+.cross{color:#e74c3c;margin-right:10px}
+.dashboard{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:15px}
+.stat-box{padding:15px;border-radius:8px;color:white;text-align:center}
+.stat-box.total{background:#1a5f7a}
+.stat-box.paid{background:#28a745}
+.stat-box.pending{background:#dc3545}
+.stat-box.amount{background:#ffc107;color:#212529}
+.stat-number{font-size:20px;font-weight:bold;margin:5px 0}
+.stat-label{font-size:12px}
+.sheet-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}
+.sheet-table th,.sheet-table td{border:1px solid #ddd;padding:8px;text-align:center}
+.sheet-table th{background:#3498db;color:white;font-size:12px}
+.sheet-table tr:nth-child(even){background:#f2f2f2}
+.category-section{margin-bottom:15px}
+.category-badge{padding:5px 10px;border-radius:15px;font-size:12px;margin:0 5px}
+.category-separa{background:#17a2b8;color:white}
+.category-tution{background:#ffc107;color:#212529}
+.filter-buttons{display:flex;gap:10px;margin:10px 0}
+.filter-btn{padding:8px 15px;border:1px solid #3498db;background:white;color:#3498db;border-radius:5px;cursor:pointer}
+.filter-btn.active{background:#3498db;color:white}
+.delete-btn{background:#e74c3c;color:white;padding:5px 10px;border-radius:4px;font-size:12px;cursor:pointer;border:none}
+.urdu-text{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:14px}
+.category-option{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif}
+</style>
+</head>
+<body>
+
+<div class="box" id="loginBox">
+<h2>🔐 Login</h2>
+<input id="email" type="email" placeholder="Email" value="admin@example.com">
+<input id="password" type="password" placeholder="Password" value="admin123">
+<button class="btn-green" onclick="login()">Login</button>
+</div>
+
+<div class="box hidden" id="adminPanel">
+<div class="category-section">
+<h2>📝 Select Category First</h2>
+<select id="categorySelect" onchange="loadCategoryData()" class="category-option">
+<option value="">Select Category</option>
+<option value="سپارہ">سپارہ</option>
+<option value="تیوشن">تیوشن</option>
+</select>
+</div>
+
+<div class="month-selector hidden" id="monthSection">
+<h2>📅 Select Month</h2>
+<input id="selectMonth" type="month">
+<button class="btn-blue" onclick="loadMonthData()">Load Fee Data</button>
+<button class="btn-red" onclick="deleteMonthFee()">Delete This Month Fee Data</button>
+</div>
+
+<div class="dashboard hidden" id="dashboard">
+<div class="stat-box total">
+<div class="stat-number" id="totalStudents">0</div>
+<div class="stat-label">Total Students</div>
+</div>
+<div class="stat-box paid">
+<div class="stat-number" id="paidStudents">0</div>
+<div class="stat-label">Paid Fee</div>
+</div>
+<div class="stat-box pending">
+<div class="stat-number" id="pendingStudents">0</div>
+<div class="stat-label">Pending Fee</div>
+</div>
+<div class="stat-box amount">
+<div class="stat-number" id="totalAmount">0</div>
+<div class="stat-label">Total Collected</div>
+</div>
+</div>
+
+<div class="filter-buttons hidden" id="filterSection">
+<button class="filter-btn active" onclick="filterStudents('all')">All Students</button>
+<button class="filter-btn" onclick="filterStudents('paid')">Paid Only</button>
+<button class="filter-btn" onclick="filterStudents('pending')">Pending Only</button>
+</div>
+
+<div class="box hidden" id="markFeeSection">
+<h2>✅ Mark Fee Payment</h2>
+<input id="feeAmount" type="number" placeholder="Fee Amount" required>
+<input id="paymentDate" type="date" required>
+<button class="btn-green" onclick="markFeeForSelected()">Mark Fee for SELECTED Students</button>
+<p style="font-size:12px;color:#666;margin-top:10px">
+Admin selects payment date
+</p>
+</div>
+
+<div class="box hidden" id="sheetSection">
+<h2>📊 Fee Status Sheet 
+<span id="categoryBadge" class="category-badge"></span>
+<span id="monthBadge" style="background:#6c757d;color:white;padding:2px 8px;border-radius:10px;font-size:12px"></span>
+</h2>
+<table class="sheet-table">
+<thead>
+<tr>
+<th>Select</th>
+<th>Roll No</th>
+<th>Student Name</th>
+<th>Class</th>
+<th>Fee Amount</th>
+<th>Status</th>
+<th>Payment Date</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody id="sheetBody"></tbody>
+</table>
+</div>
+
+<button class="btn-red hidden" onclick="logout()" style="margin-top:20px">🚪 Logout</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+import { getDatabase, ref, set, get, remove } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAlXd1v5IZwaEROAdfKMXMUPflIorWV4Zg",
+  authDomain: "students-51da1.firebaseapp.com",
+  databaseURL: "https://students-51da1-default-rtdb.firebaseio.com",
+  projectId: "students-51da1",
+  storageBucket: "students-51da1.firebasestorage.app",
+  messagingSenderId: "785878911811",
+  appId: "1:785878911811:web:5a0a480d3ceca57976bdf6"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+
+let allStudents = {};
+let filteredStudents = {};
+let selectedRollNumbers = new Set();
+let currentMonthYear = "";
+let currentCategory = "";
+let currentFilter = "all";
+let monthFeesCache = {};
+
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    document.getElementById('loginBox').classList.add('hidden');
+    document.getElementById('adminPanel').classList.remove('hidden');
+  } else {
+    document.getElementById('loginBox').classList.remove('hidden');
+    document.getElementById('adminPanel').classList.add('hidden');
+    hideAllSections();
+  }
+});
+
+function hideAllSections() {
+  document.getElementById('monthSection').classList.add('hidden');
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('filterSection').classList.add('hidden');
+  document.getElementById('sheetSection').classList.add('hidden');
+  document.getElementById('markFeeSection').classList.add('hidden');
+}
+
+window.login = async () => {
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  
+  if (!email || !password) {
+    alert('Please enter email and password');
+    return;
+  }
+  
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+    alert('Login successful!');
+  } catch (error) {
+    alert('Login failed: ' + error.message);
+  }
+};
+
+window.logout = async () => {
+  try {
+    await signOut(auth);
+    alert('Logout successful!');
+  } catch (error) {
+    alert('Logout error: ' + error.message);
+  }
+};
+
+window.loadCategoryData = async () => {
+  currentCategory = document.getElementById('categorySelect').value;
+  
+  if (!currentCategory) {
+    hideAllSections();
+    return;
+  }
+
+  // Update category badge with Urdu text
+  const badge = document.getElementById('categoryBadge');
+  badge.textContent = currentCategory;
+  badge.className = `category-badge category-${currentCategory === 'سپارہ' ? 'separa' : 'tution'}`;
+  
+  document.getElementById('monthSection').classList.remove('hidden');
+  
+  // Set default month to current month
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = (currentDate.getMonth() + 1).toString().padStart(2, '0');
+  document.getElementById('selectMonth').value = `${currentYear}-${currentMonth}`;
+  
+  // Set default payment date to today
+  document.getElementById('paymentDate').value = currentDate.toISOString().split('T')[0];
+};
+
+window.loadMonthData = async () => {
+  const monthYearInput = document.getElementById('selectMonth').value;
+  
+  if (!currentCategory) {
+    alert('Please select category first');
+    return;
+  }
+  
+  if (!monthYearInput) {
+    alert('Please select a month');
+    return;
+  }
+
+  const [year, month] = monthYearInput.split('-');
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  currentMonthYear = `${monthNames[parseInt(month) - 1]} ${year}`;
+
+  // Update month badge
+  document.getElementById('monthBadge').textContent = currentMonthYear;
+
+  try {
+    // Load all students
+    const snapshot = await get(ref(db, 'students'));
+    if (!snapshot.exists()) {
+      alert('No students found');
+      return;
+    }
+
+    allStudents = snapshot.val();
+    
+    // Filter students by category (Urdu category names)
+    filteredStudents = {};
+    for (const [rollNo, student] of Object.entries(allStudents)) {
+      if (student.status === 'active' && student.classType === currentCategory) {
+        filteredStudents[rollNo] = student;
+      }
+    }
+
+    if (Object.keys(filteredStudents).length === 0) {
+      alert(`No students found in ${currentCategory} category`);
+      return;
+    }
+
+    selectedRollNumbers.clear();
+    await updateDashboard();
+    await displaySheet();
+    
+    // Show all sections
+    document.getElementById('dashboard').classList.remove('hidden');
+    document.getElementById('filterSection').classList.remove('hidden');
+    document.getElementById('sheetSection').classList.remove('hidden');
+    document.getElementById('markFeeSection').classList.remove('hidden');
+    
+  } catch (error) {
+    alert('Error loading data: ' + error.message);
+  }
+};
+
+async function updateDashboard() {
+  let total = 0;
+  let paid = 0;
+  let pending = 0;
+  let totalAmount = 0;
+
+  monthFeesCache = {}; // Clear cache
+
+  for (const [rollNo, student] of Object.entries(filteredStudents)) {
+    total++;
+    const feeStatus = await getFeeForMonth(rollNo, currentMonthYear);
+    monthFeesCache[rollNo] = feeStatus; // Cache the result
+    
+    if (feeStatus.paid) {
+      paid++;
+      totalAmount += feeStatus.amount || 0;
+    } else {
+      pending++;
+    }
+  }
+
+  document.getElementById('totalStudents').textContent = total;
+  document.getElementById('paidStudents').textContent = paid;
+  document.getElementById('pendingStudents').textContent = pending;
+  document.getElementById('totalAmount').textContent = totalAmount;
+}
+
+async function displaySheet() {
+  const sheetBody = document.getElementById('sheetBody');
+  sheetBody.innerHTML = '';
+
+  for (const [rollNo, student] of Object.entries(filteredStudents)) {
+    const feeStatus = monthFeesCache[rollNo] || await getFeeForMonth(rollNo, currentMonthYear);
+    const isPaid = feeStatus.paid;
+    
+    // Apply filter
+    if (currentFilter === 'paid' && !isPaid) continue;
+    if (currentFilter === 'pending' && isPaid) continue;
+
+    const isSelected = selectedRollNumbers.has(rollNo);
+    
+    const row = document.createElement('tr');
+    row.className = isPaid ? 'paid' : 'pending';
+    row.innerHTML = `
+      <td>
+        ${isPaid ? 
+          '<span style="color:green">✓</span>' : 
+          `<input type="checkbox" id="check_${rollNo}" ${isSelected ? 'checked' : ''} onchange="toggleStudent('${rollNo}')">`
+        }
+      </td>
+      <td>${rollNo}</td>
+      <td class="urdu-text">${student.name || '--'}</td>
+      <td class="urdu-text">${student.class || '--'}</td>
+      <td>${isPaid ? (feeStatus.amount || '--') : '--'}</td>
+      <td>${isPaid ? 
+        `<span style="color:green">✅ Paid</span>` : 
+        '<span style="color:red">❌ Pending</span>'
+      }</td>
+      <td>${isPaid ? (feeStatus.date || '--') : '--'}</td>
+      <td>
+        ${isPaid ? 
+          `<button class="delete-btn" onclick="deleteStudentFee('${rollNo}')">Delete</button>` : 
+          '--'
+        }
+      </td>
+    `;
+    
+    sheetBody.appendChild(row);
+  }
+}
+
+window.filterStudents = (filter) => {
+  currentFilter = filter;
+  
+  // Update button states
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  event.target.classList.add('active');
+  
+  displaySheet();
+};
+
+async function getFeeForMonth(rollNo, monthYear) {
+  try {
+    const snapshot = await get(ref(db, `fees/${rollNo}`));
+    if (!snapshot.exists()) return { paid: false, amount: 0 };
+    
+    const fees = snapshot.val();
+    for (const [feeId, fee] of Object.entries(fees)) {
+      if (fee.monthYear === monthYear) {
+        return { 
+          paid: true, 
+          amount: fee.amount || 0,
+          date: fee.date || '--',
+          feeId: feeId,
+          category: fee.category || ''
+        };
+      }
+    }
+    return { paid: false, amount: 0 };
+  } catch (error) { 
+    return { paid: false, amount: 0 }; 
+  }
+}
+
+window.toggleStudent = (rollNo) => {
+  if (selectedRollNumbers.has(rollNo)) {
+    selectedRollNumbers.delete(rollNo);
+  } else {
+    selectedRollNumbers.add(rollNo);
+  }
+};
+
+window.markFeeForSelected = async () => {
+  const amount = document.getElementById('feeAmount').value;
+  const paymentDate = document.getElementById('paymentDate').value;
+  
+  if (!currentCategory) {
+    alert('Please select category first');
+    return;
+  }
+  
+  if (!currentMonthYear) {
+    alert('Please select a month first');
+    return;
+  }
+  
+  if (!amount || !paymentDate) { 
+    alert('Please enter fee amount and payment date'); 
+    return; 
+  }
+
+  if (selectedRollNumbers.size === 0) { 
+    alert('No student selected! Please check the boxes next to students you want to mark as paid.'); 
+    return; 
+  }
+
+  const confirmMessage = `Mark fee for ${selectedRollNumbers.size} selected student(s)?\nCategory: ${currentCategory}\nAmount: ${amount}\nMonth: ${currentMonthYear}\nPayment Date: ${paymentDate}`;
+  if (!confirm(confirmMessage)) return;
+
+  try {
+    for (const rollNo of selectedRollNumbers) {
+      const student = filteredStudents[rollNo];
+      if (!student) continue;
+
+      // Check if already paid
+      const existingFee = monthFeesCache[rollNo] || await getFeeForMonth(rollNo, currentMonthYear);
+      if (existingFee.paid) {
+        console.log(`Student ${rollNo} already paid for ${currentMonthYear}`);
+        continue;
+      }
+
+      const feeId = `fee_${Date.now()}_${Math.floor(Math.random() * 10000)}_${rollNo}`;
+      
+      const feeData = {
+        monthYear: currentMonthYear,
+        amount: parseInt(amount),
+        date: paymentDate, // Admin selected date
+        paidAt: Date.now(),
+        paidBy: auth.currentUser?.email || 'admin',
+        studentName: student.name,
+        rollNo: rollNo,
+        class: student.class || '',
+        category: currentCategory
+      };
+      
+      await set(ref(db, `fees/${rollNo}/${feeId}`), feeData);
+      console.log(`Fee marked for student ${rollNo}`);
+    }
+
+    alert(`${selectedRollNumbers.size} student(s) fee marked as paid!\nCategory: ${currentCategory}\nMonth: ${currentMonthYear}`);
+    document.getElementById('feeAmount').value = '';
+    selectedRollNumbers.clear();
+    await loadMonthData();
+    
+  } catch (error) { 
+    console.error("Error marking fee:", error);
+    alert('Error marking fee: ' + error.message); 
+  }
+};
+
+window.deleteStudentFee = async (rollNo) => {
+  if (!confirm(`Delete fee for student ${rollNo} for ${currentMonthYear}?`)) return;
+  
+  try {
+    const feeInfo = monthFeesCache[rollNo] || await getFeeForMonth(rollNo, currentMonthYear);
+    if (feeInfo.paid && feeInfo.feeId) {
+      await remove(ref(db, `fees/${rollNo}/${feeInfo.feeId}`));
+      alert('Fee deleted successfully!');
+      delete monthFeesCache[rollNo]; // Remove from cache
+      await loadMonthData();
+    } else {
+      alert('No fee found to delete');
+    }
+  } catch (error) {
+    alert('Error deleting fee: ' + error.message);
+  }
+};
+
+window.deleteMonthFee = async () => {
+  if (!currentMonthYear) {
+    alert('Please select a month first');
+    return;
+  }
+  
+  if (!confirm(`Delete ALL fee records for ${currentMonthYear}?\nCategory: ${currentCategory}\nThis cannot be undone!`)) return;
+  
+  try {
+    let deletedCount = 0;
+    
+    for (const [rollNo, student] of Object.entries(filteredStudents)) {
+      const feeInfo = monthFeesCache[rollNo] || await getFeeForMonth(rollNo, currentMonthYear);
+      if (feeInfo.paid && feeInfo.feeId) {
+        await remove(ref(db, `fees/${rollNo}/${feeInfo.feeId}`));
+        deletedCount++;
+        delete monthFeesCache[rollNo]; // Remove from cache
+      }
+    }
+    
+    alert(`${deletedCount} fee records deleted for ${currentMonthYear}!\nCategory: ${currentCategory}`);
+    await loadMonthData();
+    
+  } catch (error) {
+    console.error("Error deleting month fee:", error);
+    alert('Error deleting month fee: ' + error.message);
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Set default payment date to today
+  const currentDate = new Date();
+  document.getElementById('paymentDate').value = currentDate.toISOString().split('T')[0];
+});
+</script>
+</body>
+</html>
