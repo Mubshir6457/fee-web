@@ -32,7 +32,7 @@ input, select {
   border: 1px solid #ddd;
   border-radius: 6px;
   width: 100%;
-  font-size: 16px; /* Larger for mobile touch */
+  font-size: 16px;
 }
 
 button {
@@ -120,7 +120,7 @@ button {
 
 .sheet-table {
   width: 100%;
-  min-width: 700px; /* Minimum width for table */
+  min-width: 700px;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -222,9 +222,9 @@ button {
   font-size: 12px;
 }
 
-/* Student Row for Mobile View (Alternative) */
+/* Student Row for Mobile View */
 .mobile-student-list {
-  display: none; /* Hidden by default, shown via media query */
+  display: none;
 }
 
 .student-card {
@@ -289,7 +289,6 @@ button {
   font-size: 13px;
 }
 
-/* Mobile Delete Button */
 .delete-btn {
   background: #e74c3c;
   color: white;
@@ -345,7 +344,6 @@ button {
     font-size: 10px;
   }
   
-  /* Switch to card view on very small screens */
   @media screen and (max-width: 480px) {
     .sheet-table {
       display: none;
@@ -373,7 +371,6 @@ button {
     }
   }
   
-  /* Landscape orientation */
   @media screen and (max-height: 500px) and (orientation: landscape) {
     .box {
       padding: 10px;
@@ -437,6 +434,22 @@ button {
   0%, 100% { opacity: 0; }
   10%, 90% { opacity: 1; }
 }
+
+/* Debug Info */
+.debug-info {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 10px;
+  margin: 10px 0;
+  font-size: 12px;
+  color: #6c757d;
+  display: none;
+}
+
+.debug-info.show {
+  display: block;
+}
 </style>
 </head>
 <body>
@@ -446,6 +459,7 @@ button {
   <input id="email" type="email" placeholder="Email" value="admin@example.com">
   <input id="password" type="password" placeholder="Password" value="admin123">
   <button class="btn-green" onclick="login()">Login</button>
+  <div class="debug-info" id="loginDebug"></div>
 </div>
 
 <div class="box hidden" id="adminPanel">
@@ -497,7 +511,13 @@ button {
     </p>
   </div>
 
-  <!-- Table View (for larger screens) -->
+  <!-- Debug Info -->
+  <div class="debug-info hidden" id="dataDebug">
+    <strong>Data Debug Info:</strong>
+    <div id="debugContent">No data loaded yet</div>
+  </div>
+
+  <!-- Table View -->
   <div class="hidden" id="sheetSection">
     <div class="table-container">
       <table class="sheet-table">
@@ -519,7 +539,7 @@ button {
     </div>
   </div>
 
-  <!-- Mobile Card View (for small screens) -->
+  <!-- Mobile Card View -->
   <div class="mobile-student-list hidden" id="mobileSheetSection">
     <div id="mobileSheetBody"></div>
   </div>
@@ -558,6 +578,7 @@ let selectedRollNumbers = new Set();
 let currentMonthYear = "";
 let currentFilter = "all";
 let monthFeesCache = {};
+let currentUserUID = "";
 
 // Toast notification function
 function showToast(message, duration = 3000) {
@@ -569,11 +590,25 @@ function showToast(message, duration = 3000) {
   }, duration);
 }
 
+function showDebugInfo(containerId, message) {
+  const container = document.getElementById(containerId);
+  const content = document.getElementById(containerId === 'dataDebug' ? 'debugContent' : 'loginDebug');
+  if (container && content) {
+    content.textContent = message;
+    container.classList.add('show');
+    setTimeout(() => {
+      container.classList.remove('show');
+    }, 5000);
+  }
+}
+
 onAuthStateChanged(auth, (user) => {
   if (user) {
+    currentUserUID = user.uid;
     document.getElementById('loginBox').classList.add('hidden');
     document.getElementById('adminPanel').classList.remove('hidden');
     setupDefaultDates();
+    showDebugInfo('loginDebug', `Logged in as: ${user.email}\nUID: ${user.uid}`);
   } else {
     document.getElementById('loginBox').classList.remove('hidden');
     document.getElementById('adminPanel').classList.add('hidden');
@@ -595,6 +630,7 @@ function hideAllSections() {
   document.getElementById('sheetSection').classList.add('hidden');
   document.getElementById('mobileSheetSection').classList.add('hidden');
   document.getElementById('markFeeSection').classList.add('hidden');
+  document.getElementById('dataDebug').classList.add('hidden');
 }
 
 window.login = async () => {
@@ -607,10 +643,12 @@ window.login = async () => {
   }
   
   try {
-    await signInWithEmailAndPassword(auth, email, password);
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
     showToast('Login successful!');
+    showDebugInfo('loginDebug', `Login successful!\nEmail: ${userCredential.user.email}\nUID: ${userCredential.user.uid}`);
   } catch (error) {
     showToast('Login failed: ' + error.message);
+    showDebugInfo('loginDebug', 'Login failed: ' + error.message);
   }
 };
 
@@ -618,6 +656,7 @@ window.logout = async () => {
   try {
     await signOut(auth);
     showToast('Logout successful!');
+    showDebugInfo('loginDebug', 'Logged out');
   } catch (error) {
     showToast('Logout error: ' + error.message);
   }
@@ -639,28 +678,75 @@ window.loadMonthData = async () => {
   document.getElementById('mobileMonthBadge').textContent = currentMonthYear;
 
   try {
-    const snapshot = await get(ref(db, 'madrasaData/students'));
+    showToast('Loading students data...');
+    showDebugInfo('dataDebug', 'Loading students from Firebase...');
     
-    if (!snapshot.exists()) {
+    // Try multiple possible paths to find students data
+    const possiblePaths = [
+      `users/${currentUserUID}/madrasaData/students`,
+      `madrasaData/students`,
+      'students',
+      `users/${currentUserUID}/students`
+    ];
+    
+    let studentsData = null;
+    let usedPath = '';
+    
+    for (const path of possiblePaths) {
+      try {
+        const snapshot = await get(ref(db, path));
+        if (snapshot.exists()) {
+          studentsData = snapshot.val();
+          usedPath = path;
+          showDebugInfo('dataDebug', `Found students at path: ${path}\nStudents count: ${Object.keys(studentsData || {}).length}`);
+          break;
+        }
+      } catch (error) {
+        console.log(`Path ${path} not accessible:`, error.message);
+      }
+    }
+    
+    if (!studentsData) {
       showToast('No students found in database');
+      showDebugInfo('dataDebug', 'No students found in any path. Possible paths checked:\n' + possiblePaths.join('\n'));
       return;
     }
 
-    allStudents = snapshot.val();
+    allStudents = studentsData;
     filteredStudents = {};
     
+    showDebugInfo('dataDebug', `Processing students data from: ${usedPath}`);
+    
+    // Process students data
+    let studentCount = 0;
+    let skippedCount = 0;
+    
     for (const [studentId, student] of Object.entries(allStudents)) {
-      if (student && student.rollNumber) {
-        const rollNo = student.rollNumber.toString();
+      if (!student) {
+        skippedCount++;
+        continue;
+      }
+      
+      // Try multiple possible roll number fields
+      const rollNumber = student.rollNumber || student.rollNo || student.roll || student.id || studentId;
+      
+      if (rollNumber) {
+        const rollNo = rollNumber.toString();
         filteredStudents[rollNo] = {
-          name: student.fullName || 'N/A',
-          class: student.department || 'N/A',
-          classType: student.category || 'N/A',
+          name: student.fullName || student.name || student.studentName || 'N/A',
+          class: student.department || student.class || student.studentClass || 'N/A',
+          classType: student.category || student.classType || student.type || 'N/A',
           rollNumber: rollNo,
-          status: 'active'
+          status: 'active',
+          rawData: JSON.stringify(student).substring(0, 100) + '...' // Store truncated raw data for debug
         };
+        studentCount++;
+      } else {
+        skippedCount++;
       }
     }
+    
+    showDebugInfo('dataDebug', `Processed ${studentCount} students, skipped ${skippedCount}\nAvailable roll numbers: ${Object.keys(filteredStudents).sort((a,b) => parseInt(a) - parseInt(b)).join(', ')}`);
 
     if (Object.keys(filteredStudents).length === 0) {
       showToast('No active students found');
@@ -675,6 +761,7 @@ window.loadMonthData = async () => {
     document.getElementById('dashboard').classList.remove('hidden');
     document.getElementById('filterSection').classList.remove('hidden');
     document.getElementById('markFeeSection').classList.remove('hidden');
+    document.getElementById('dataDebug').classList.add('hidden');
     
     // Show appropriate view based on screen size
     if (window.innerWidth <= 480) {
@@ -685,9 +772,12 @@ window.loadMonthData = async () => {
       document.getElementById('mobileSheetSection').classList.add('hidden');
     }
     
+    showToast(`Loaded ${studentCount} students for ${currentMonthYear}`);
+    
   } catch (error) {
     console.error("Error loading data:", error);
     showToast('Error loading data: ' + error.message);
+    showDebugInfo('dataDebug', 'Error: ' + error.message + '\nStack: ' + error.stack);
   }
 };
 
@@ -834,6 +924,7 @@ async function getFeeForMonth(rollNo, monthYear) {
     }
     return { paid: false, amount: 0 };
   } catch (error) { 
+    console.log(`Error getting fee for ${rollNo}:`, error.message);
     return { paid: false, amount: 0 }; 
   }
 }
@@ -983,6 +1074,16 @@ window.addEventListener('resize', function() {
   } else {
     document.getElementById('sheetSection').classList.remove('hidden');
     document.getElementById('mobileSheetSection').classList.add('hidden');
+  }
+});
+
+// Auto-try to load data if already logged in
+window.addEventListener('load', function() {
+  if (auth.currentUser) {
+    setTimeout(() => {
+      setupDefaultDates();
+      showDebugInfo('loginDebug', `Auto-logged in as: ${auth.currentUser.email}`);
+    }, 1000);
   }
 });
 </script>
