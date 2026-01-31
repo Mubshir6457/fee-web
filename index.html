@@ -450,15 +450,44 @@ button {
 .debug-info.show {
   display: block;
 }
+
+/* Error Message */
+.error-message {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 10px;
+  border-radius: 4px;
+  margin: 10px 0;
+  border: 1px solid #f5c6cb;
+}
+
+.success-message {
+  background: #d4edda;
+  color: #155724;
+  padding: 10px;
+  border-radius: 4px;
+  margin: 10px 0;
+  border: 1px solid #c3e6cb;
+}
 </style>
 </head>
 <body>
 
 <div class="box" id="loginBox">
   <h2>🔐 Login</h2>
+  <div id="loginError" class="error-message hidden"></div>
+  <div id="loginSuccess" class="success-message hidden"></div>
   <input id="email" type="email" placeholder="Email" value="admin@example.com">
   <input id="password" type="password" placeholder="Password" value="admin123">
   <button class="btn-green" onclick="login()">Login</button>
+  <div style="margin-top: 15px; font-size: 12px; color: #666;">
+    <strong>Note:</strong> Make sure you have:
+    <ol style="margin: 5px 0 0 15px; padding-left: 15px;">
+      <li>Created user in Firebase Authentication</li>
+      <li>Updated Firebase config in config.js</li>
+      <li>Enabled Email/Password sign-in method</li>
+    </ol>
+  </div>
   <div class="debug-info" id="loginDebug"></div>
 </div>
 
@@ -552,26 +581,35 @@ button {
 <!-- Toast Notification -->
 <div class="toast" id="toast"></div>
 
+<!-- Include config.js -->
+<script src="config.js"></script>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 import { getDatabase, ref, set, get, remove } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyD-nEluewFdw3LLyU1biNEZ1cKpFLKN7kg",
-  authDomain: "allstudentdata-e1a01.firebaseapp.com",
-  databaseURL: "https://allstudentdata-e1a01-default-rtdb.firebaseio.com",
-  projectId: "allstudentdata-e1a01",
-  storageBucket: "allstudentdata-e1a01.firebasestorage.app",
-  messagingSenderId: "894758025587",
-  appId: "1:894758025587:web:2012f2d47033a51d04ad06",
-  measurementId: "G-R1R06WF0LD"
-};
+// Check if firebaseConfig is defined
+let firebaseApp;
+let auth;
+let db;
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getDatabase(app);
+try {
+  if (typeof firebaseConfig === 'undefined') {
+    throw new Error('Firebase configuration not found. Please check config.js file.');
+  }
+  
+  firebaseApp = initializeApp(firebaseConfig);
+  auth = getAuth(firebaseApp);
+  db = getDatabase(firebaseApp);
+  
+  console.log('Firebase initialized successfully');
+} catch (error) {
+  console.error('Firebase initialization error:', error);
+  showLoginError('Firebase Configuration Error: ' + error.message + '. Please check config.js file.');
+}
 
+// Global variables
 let allStudents = {};
 let filteredStudents = {};
 let selectedRollNumbers = new Set();
@@ -579,6 +617,23 @@ let currentMonthYear = "";
 let currentFilter = "all";
 let monthFeesCache = {};
 let currentUserUID = "";
+
+// Error and success message functions
+function showLoginError(message) {
+  const errorDiv = document.getElementById('loginError');
+  const successDiv = document.getElementById('loginSuccess');
+  errorDiv.textContent = message;
+  errorDiv.classList.remove('hidden');
+  successDiv.classList.add('hidden');
+}
+
+function showLoginSuccess(message) {
+  const errorDiv = document.getElementById('loginError');
+  const successDiv = document.getElementById('loginSuccess');
+  successDiv.textContent = message;
+  successDiv.classList.remove('hidden');
+  errorDiv.classList.add('hidden');
+}
 
 // Toast notification function
 function showToast(message, duration = 3000) {
@@ -602,19 +657,25 @@ function showDebugInfo(containerId, message) {
   }
 }
 
-onAuthStateChanged(auth, (user) => {
-  if (user) {
-    currentUserUID = user.uid;
-    document.getElementById('loginBox').classList.add('hidden');
-    document.getElementById('adminPanel').classList.remove('hidden');
-    setupDefaultDates();
-    showDebugInfo('loginDebug', `Logged in as: ${user.email}\nUID: ${user.uid}`);
-  } else {
-    document.getElementById('loginBox').classList.remove('hidden');
-    document.getElementById('adminPanel').classList.add('hidden');
-    hideAllSections();
-  }
-});
+// Auth state change listener
+if (auth) {
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      currentUserUID = user.uid;
+      document.getElementById('loginBox').classList.add('hidden');
+      document.getElementById('adminPanel').classList.remove('hidden');
+      showLoginSuccess(`Logged in as: ${user.email}`);
+      setupDefaultDates();
+      showDebugInfo('loginDebug', `Logged in as: ${user.email}\nUID: ${user.uid}`);
+    } else {
+      document.getElementById('loginBox').classList.remove('hidden');
+      document.getElementById('adminPanel').classList.add('hidden');
+      hideAllSections();
+    }
+  });
+} else {
+  showLoginError('Authentication service not available. Check Firebase configuration.');
+}
 
 function setupDefaultDates() {
   const currentDate = new Date();
@@ -638,31 +699,73 @@ window.login = async () => {
   const password = document.getElementById('password').value;
   
   if (!email || !password) {
-    showToast('Please enter email and password');
+    showLoginError('Please enter email and password');
+    return;
+  }
+  
+  if (!auth) {
+    showLoginError('Authentication service not initialized. Check Firebase configuration.');
     return;
   }
   
   try {
+    showLoginSuccess('Logging in...');
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     showToast('Login successful!');
     showDebugInfo('loginDebug', `Login successful!\nEmail: ${userCredential.user.email}\nUID: ${userCredential.user.uid}`);
   } catch (error) {
-    showToast('Login failed: ' + error.message);
-    showDebugInfo('loginDebug', 'Login failed: ' + error.message);
+    console.error('Login error:', error);
+    
+    // User-friendly error messages
+    let errorMessage = 'Login failed: ';
+    switch(error.code) {
+      case 'auth/invalid-email':
+        errorMessage += 'Invalid email address';
+        break;
+      case 'auth/user-disabled':
+        errorMessage += 'This account has been disabled';
+        break;
+      case 'auth/user-not-found':
+        errorMessage += 'No account found with this email';
+        break;
+      case 'auth/wrong-password':
+        errorMessage += 'Incorrect password';
+        break;
+      case 'auth/network-request-failed':
+        errorMessage += 'Network error. Please check your internet connection';
+        break;
+      default:
+        errorMessage += error.message;
+    }
+    
+    showLoginError(errorMessage);
+    showToast(errorMessage);
   }
 };
 
 window.logout = async () => {
+  if (!auth) {
+    showToast('Authentication service not available');
+    return;
+  }
+  
   try {
     await signOut(auth);
     showToast('Logout successful!');
     showDebugInfo('loginDebug', 'Logged out');
+    showLoginSuccess('You have been logged out');
   } catch (error) {
+    console.error('Logout error:', error);
     showToast('Logout error: ' + error.message);
   }
 };
 
 window.loadMonthData = async () => {
+  if (!auth || !db) {
+    showToast('Firebase services not initialized');
+    return;
+  }
+  
   const monthYearInput = document.getElementById('selectMonth').value;
   
   if (!monthYearInput) {
@@ -1077,13 +1180,22 @@ window.addEventListener('resize', function() {
   }
 });
 
-// Auto-try to load data if already logged in
+// Check Firebase configuration on load
 window.addEventListener('load', function() {
-  if (auth.currentUser) {
-    setTimeout(() => {
-      setupDefaultDates();
-      showDebugInfo('loginDebug', `Auto-logged in as: ${auth.currentUser.email}`);
-    }, 1000);
+  console.log('Page loaded, checking Firebase configuration...');
+  
+  if (typeof firebaseConfig === 'undefined') {
+    showLoginError('Firebase configuration not found. Please create config.js file with your Firebase configuration.');
+  } else {
+    console.log('Firebase config found:', Object.keys(firebaseConfig));
+    
+    // Try to auto-login if already authenticated
+    if (auth && auth.currentUser) {
+      setTimeout(() => {
+        setupDefaultDates();
+        showDebugInfo('loginDebug', `Auto-logged in as: ${auth.currentUser.email}`);
+      }, 1000);
+    }
   }
 });
 </script>
